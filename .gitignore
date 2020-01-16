@@ -1,0 +1,14 @@
+*.iml
+.gradle
+/local.properties
+.idea
+.DS_Store
+/build
+/captures
+/target
+/test-output
+report/*
+.externalNativeBuild
+201*
+*.pyc
+devicesLog
