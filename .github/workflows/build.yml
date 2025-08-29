@@ -1,0 +1,83 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up JDK 8
+      uses: actions/setup-java@v3
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v2
+      
+    - name: Install Android SDK components
+      run: |
+        echo "y" | $ANDROID_HOME/tools/bin/sdkmanager "platforms;android-22"
+        echo "y" | $ANDROID_HOME/tools/bin/sdkmanager "build-tools;25.0.0"
+        
+    - name: Cache Gradle packages
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+          
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+      
+    - name: Update repositories for modern CI
+      run: |
+        # Backup original files
+        cp build.gradle build.gradle.bak
+        cp app/build.gradle app/build.gradle.bak
+        
+        # Update root build.gradle
+        sed -i 's/jcenter()/mavenCentral()/g' build.gradle
+        
+        # Update app build.gradle - replace jcenter if it exists
+        if grep -q "jcenter()" app/build.gradle; then
+          sed -i 's/jcenter()/mavenCentral()/g' app/build.gradle
+        fi
+        
+        # Add google repository to allprojects if not present
+        if ! grep -q "google()" build.gradle; then
+          sed -i '/allprojects {/,/repositories {/{ /repositories {/a\        google()
+          }' build.gradle
+        fi
+        
+    - name: Clean and build
+      run: |
+        ./gradlew clean
+        ./gradlew assembleDebug
+      
+    - name: Upload APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: intentfuzzer-apk
+        path: app/build/outputs/apk/debug/app-debug.apk
+        
+    - name: Upload build logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-logs
+        path: |
+          build.gradle
+          app/build.gradle
+          gradle.properties
