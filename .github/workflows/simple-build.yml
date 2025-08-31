@@ -1,0 +1,46 @@
+name: Simple Android Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up JDK 8
+      uses: actions/setup-java@v3
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v2
+      
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+      
+    - name: Fix build configuration
+      run: |
+        # 简单替换仓库配置
+        sed -i 's/jcenter()/mavenCentral()/g' build.gradle
+        # 添加google仓库到allprojects
+        sed -i '/allprojects {/,/repositories {/{ /repositories {/a\        google()
+        }' build.gradle
+        
+    - name: Clean and build
+      run: |
+        ./gradlew clean --no-daemon
+        ./gradlew assembleDebug --no-daemon --stacktrace
+      
+    - name: Upload APK
+      if: success()
+      uses: actions/upload-artifact@v3
+      with:
+        name: intentfuzzer-apk
+        path: app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 30
