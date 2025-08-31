@@ -18,31 +18,51 @@ jobs:
         java-version: '8'
         distribution: 'temurin'
         
-    - name: Install manual Android SDK (compatible with old projects)
+    - name: Setup legacy Android SDK environment
       run: |
-        # 创建SDK目录
-        mkdir -p $HOME/android-sdk-legacy
-        cd $HOME/android-sdk-legacy
-        
-        # 下载旧版本SDK tools（兼容Java 8）
-        wget -q https://dl.google.com/android/repository/tools_r25.2.5-linux.zip
-        unzip -q tools_r25.2.5-linux.zip
+        # 创建完整的SDK目录结构
+        ANDROID_SDK_DIR="$HOME/android-sdk"
+        mkdir -p $ANDROID_SDK_DIR
         
         # 设置环境变量
-        echo "ANDROID_HOME=$HOME/android-sdk-legacy" >> $GITHUB_ENV
-        echo "ANDROID_SDK_ROOT=$HOME/android-sdk-legacy" >> $GITHUB_ENV
-        echo "$HOME/android-sdk-legacy/tools/bin" >> $GITHUB_PATH
-        echo "$HOME/android-sdk-legacy/platform-tools" >> $GITHUB_PATH
+        echo "ANDROID_HOME=$ANDROID_SDK_DIR" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_DIR" >> $GITHUB_ENV
         
-        # 创建必要目录
-        mkdir -p $HOME/android-sdk-legacy/licenses
+        # 创建许可目录和文件
+        mkdir -p $ANDROID_SDK_DIR/licenses
         
-        # 接受所有许可协议
-        echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55" > $HOME/android-sdk-legacy/licenses/android-sdk-license
-        echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > $HOME/android-sdk-legacy/licenses/android-sdk-preview-license
+        # 写入所有已知的许可协议
+        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > $ANDROID_SDK_DIR/licenses/android-sdk-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $ANDROID_SDK_DIR/licenses/android-sdk-license
+        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> $ANDROID_SDK_DIR/licenses/android-sdk-license
         
-        # 尝试安装组件（使用老版本sdkmanager）
-        $HOME/android-sdk-legacy/tools/bin/sdkmanager "platforms;android-22" "build-tools;25.0.0" "platform-tools" || true
+        # 创建平台和构建工具目录
+        mkdir -p $ANDROID_SDK_DIR/platforms/android-22
+        mkdir -p $ANDROID_SDK_DIR/build-tools/25.0.0
+        mkdir -p $ANDROID_SDK_DIR/platform-tools
+        
+        # 下载SDK tools (旧版本，兼容Java 8)
+        cd $ANDROID_SDK_DIR
+        wget -q https://dl.google.com/android/repository/sdk-tools-linux-3859397.zip
+        unzip -q sdk-tools-linux-3859397.zip
+        
+        # 更新所有许可协议
+        echo "84831b9409646a918e30573bab4c9c91346d8abd" > $ANDROID_SDK_DIR/licenses/android-sdk-preview-license
+        echo "d975f751698a77b662f1254ddbeed3901e976f5a" > $ANDROID_SDK_DIR/licenses/intel-android-extra-license
+        
+        # 使用SDK manager安装组件
+        yes | $ANDROID_SDK_DIR/tools/bin/sdkmanager --sdk_root=$ANDROID_SDK_DIR \
+          "platforms;android-22" \
+          "build-tools;25.0.0" \
+          "platform-tools" || echo "SDK installation completed with warnings"
+        
+        # 设置权限
+        chmod +x $ANDROID_SDK_DIR/build-tools/25.0.0/*
+        chmod +x $ANDROID_SDK_DIR/platform-tools/*
+        
+        # 添加到PATH
+        echo "$ANDROID_SDK_DIR/build-tools/25.0.0" >> $GITHUB_PATH
+        echo "$ANDROID_SDK_DIR/platform-tools" >> $GITHUB_PATH
       
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew

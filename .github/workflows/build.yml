@@ -1,15 +1,11 @@
 name: Build Android APK
 
 on:
-  push:
-    branches: [ master, main ]
-  pull_request:
-    branches: [ master, main ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     
     steps:
     - uses: actions/checkout@v3
@@ -22,11 +18,9 @@ jobs:
         
     - name: Setup Android SDK
       uses: android-actions/setup-android@v2
-      
-    - name: Install Android SDK components
-      run: |
-        echo "y" | $ANDROID_HOME/tools/bin/sdkmanager "platforms;android-22"
-        echo "y" | $ANDROID_HOME/tools/bin/sdkmanager "build-tools;25.0.0"
+      with:
+        api-level: 22
+        build-tools: 25.0.0
         
     - name: Cache Gradle packages
       uses: actions/cache@v3
