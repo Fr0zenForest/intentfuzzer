@@ -12,17 +12,37 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Set up JDK 8
+    - name: Set up JDK 8 for building
       uses: actions/setup-java@v4
       with:
         java-version: '8'
         distribution: 'temurin'
         
-    - name: Set up Android SDK
-      uses: android-actions/setup-android@v2
-      with:
-        api-level: 22
-        build-tools: 25.0.0
+    - name: Install manual Android SDK (compatible with old projects)
+      run: |
+        # 创建SDK目录
+        mkdir -p $HOME/android-sdk-legacy
+        cd $HOME/android-sdk-legacy
+        
+        # 下载旧版本SDK tools（兼容Java 8）
+        wget -q https://dl.google.com/android/repository/tools_r25.2.5-linux.zip
+        unzip -q tools_r25.2.5-linux.zip
+        
+        # 设置环境变量
+        echo "ANDROID_HOME=$HOME/android-sdk-legacy" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$HOME/android-sdk-legacy" >> $GITHUB_ENV
+        echo "$HOME/android-sdk-legacy/tools/bin" >> $GITHUB_PATH
+        echo "$HOME/android-sdk-legacy/platform-tools" >> $GITHUB_PATH
+        
+        # 创建必要目录
+        mkdir -p $HOME/android-sdk-legacy/licenses
+        
+        # 接受所有许可协议
+        echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55" > $HOME/android-sdk-legacy/licenses/android-sdk-license
+        echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > $HOME/android-sdk-legacy/licenses/android-sdk-preview-license
+        
+        # 尝试安装组件（使用老版本sdkmanager）
+        $HOME/android-sdk-legacy/tools/bin/sdkmanager "platforms;android-22" "build-tools;25.0.0" "platform-tools" || true
       
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
