@@ -1,0 +1,129 @@
+name: Compatible Android Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sdk:
+        description: 'Target SDK Version'
+        required: true
+        default: '23'
+        type: choice
+        options:
+        - '22'
+        - '23'
+        - '24'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 8
+      uses: actions/setup-java@v4
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        
+    - name: Setup Android SDK environment
+      run: |
+        ANDROID_SDK_DIR="$HOME/android-sdk"
+        mkdir -p $ANDROID_SDK_DIR
+        
+        echo "ANDROID_HOME=$ANDROID_SDK_DIR" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_DIR" >> $GITHUB_ENV
+        
+        mkdir -p $ANDROID_SDK_DIR/licenses
+        
+        # 许可协议
+        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > $ANDROID_SDK_DIR/licenses/android-sdk-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $ANDROID_SDK_DIR/licenses/android-sdk-license
+        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> $ANDROID_SDK_DIR/licenses/android-sdk-license
+        echo "84831b9409646a918e30573bab4c9c91346d8abd" > $ANDROID_SDK_DIR/licenses/android-sdk-preview-license
+        echo "d975f751698a77b662f1254ddbeed3901e976f5a" > $ANDROID_SDK_DIR/licenses/intel-android-extra-license
+        
+        # 下载SDK tools
+        cd $ANDROID_SDK_DIR
+        wget -q https://dl.google.com/android/repository/sdk-tools-linux-3859397.zip
+        unzip -q sdk-tools-linux-3859397.zip
+        
+        # 根据目标SDK安装对应平台
+        TARGET_SDK="${{ github.event.inputs.target_sdk }}"
+        yes | $ANDROID_SDK_DIR/tools/bin/sdkmanager --sdk_root=$ANDROID_SDK_DIR \
+          "platforms;android-22" \
+          "platforms;android-${TARGET_SDK}" \
+          "build-tools;25.0.0" \
+          "platform-tools" || echo "SDK installation completed"
+        
+        chmod +x $ANDROID_SDK_DIR/build-tools/25.0.0/* || true
+        chmod +x $ANDROID_SDK_DIR/platform-tools/* || true
+        
+        echo "$ANDROID_SDK_DIR/build-tools/25.0.0" >> $GITHUB_PATH
+        echo "$ANDROID_SDK_DIR/platform-tools" >> $GITHUB_PATH
+        
+    - name: Configure build for target SDK
+      run: |
+        TARGET_SDK="${{ github.event.inputs.target_sdk }}"
+        
+        # 备份原始文件
+        cp app/build.gradle app/build.gradle.original
+        
+        # 修复仓库配置
+        sed -i 's/jcenter()/mavenCentral()/g' build.gradle
+        sed -i '/allprojects {/,/repositories {/{ /repositories {/a\        google()
+        }' build.gradle
+        
+        # 根据选择的目标SDK更新配置
+        if [ "$TARGET_SDK" != "22" ]; then
+          sed -i "s/compileSdkVersion 22/compileSdkVersion $TARGET_SDK/g" app/build.gradle
+          sed -i "s/targetSdkVersion 22/targetSdkVersion $TARGET_SDK/g" app/build.gradle
+          
+          # 为API 23+添加必要的权限
+          if [ "$TARGET_SDK" -ge "23" ]; then
+            echo "Adding runtime permissions for API 23+"
+            # 在AndroidManifest.xml中添加查询包信息的权限（如果需要）
+            if ! grep -q "QUERY_ALL_PACKAGES" app/src/main/AndroidManifest.xml; then
+              sed -i '/<manifest/a\    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />' app/src/main/AndroidManifest.xml
+            fi
+          fi
+        fi
+        
+        echo "=== Build configuration for target SDK $TARGET_SDK ==="
+        grep -A 10 "defaultConfig" app/build.gradle
+        
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+      
+    - name: Build APK
+      run: |
+        ./gradlew clean --no-daemon
+        ./gradlew assembleDebug --no-daemon --stacktrace
+      
+    - name: Upload APK
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: intentfuzzer-sdk${{ github.event.inputs.target_sdk }}-apk
+        path: app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 30
+        
+    - name: Show build info
+      if: success()
+      run: |
+        TARGET_SDK="${{ github.event.inputs.target_sdk }}"
+        if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+          echo "✅ APK built successfully with targetSdkVersion $TARGET_SDK"
+          
+          if [ "$TARGET_SDK" == "22" ]; then
+            echo "📱 Original functionality preserved"
+            echo "⚠️  May not install on very new Android versions"
+          else
+            echo "📱 Modern Android compatibility"
+            echo "⚠️  App behavior may change due to new permission model"
+          fi
+          
+          ls -la app/build/outputs/apk/debug/app-debug.apk
+        fi

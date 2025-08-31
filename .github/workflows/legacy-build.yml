@@ -1,0 +1,101 @@
+name: Legacy Android Build (API 22)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 8
+      uses: actions/setup-java@v4
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        
+    - name: Setup Android SDK environment
+      run: |
+        ANDROID_SDK_DIR="$HOME/android-sdk"
+        mkdir -p $ANDROID_SDK_DIR
+        
+        echo "ANDROID_HOME=$ANDROID_SDK_DIR" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_DIR" >> $GITHUB_ENV
+        
+        mkdir -p $ANDROID_SDK_DIR/licenses
+        
+        # 写入所有已知的许可协议
+        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > $ANDROID_SDK_DIR/licenses/android-sdk-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $ANDROID_SDK_DIR/licenses/android-sdk-license
+        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> $ANDROID_SDK_DIR/licenses/android-sdk-license
+        echo "84831b9409646a918e30573bab4c9c91346d8abd" > $ANDROID_SDK_DIR/licenses/android-sdk-preview-license
+        echo "d975f751698a77b662f1254ddbeed3901e976f5a" > $ANDROID_SDK_DIR/licenses/intel-android-extra-license
+        
+        mkdir -p $ANDROID_SDK_DIR/platforms/android-22
+        mkdir -p $ANDROID_SDK_DIR/build-tools/25.0.0
+        mkdir -p $ANDROID_SDK_DIR/platform-tools
+        
+        # 下载SDK tools (旧版本，兼容Java 8)
+        cd $ANDROID_SDK_DIR
+        wget -q https://dl.google.com/android/repository/sdk-tools-linux-3859397.zip
+        unzip -q sdk-tools-linux-3859397.zip
+        
+        # 使用SDK manager安装组件
+        yes | $ANDROID_SDK_DIR/tools/bin/sdkmanager --sdk_root=$ANDROID_SDK_DIR \
+          "platforms;android-22" \
+          "build-tools;25.0.0" \
+          "platform-tools" || echo "SDK installation completed with warnings"
+        
+        # 设置权限
+        chmod +x $ANDROID_SDK_DIR/build-tools/25.0.0/* || true
+        chmod +x $ANDROID_SDK_DIR/platform-tools/* || true
+        
+        echo "$ANDROID_SDK_DIR/build-tools/25.0.0" >> $GITHUB_PATH
+        echo "$ANDROID_SDK_DIR/platform-tools" >> $GITHUB_PATH
+        
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+      
+    - name: Fix build configuration (preserve original target SDK)
+      run: |
+        # 备份原始文件
+        cp app/build.gradle app/build.gradle.backup
+        
+        # 只替换仓库配置，保持SDK版本不变
+        sed -i 's/jcenter()/mavenCentral()/g' build.gradle
+        sed -i '/allprojects {/,/repositories {/{ /repositories {/a\        google()
+        }' build.gradle
+        
+        # 确保使用原始的targetSdkVersion 22
+        sed -i 's/targetSdkVersion 23/targetSdkVersion 22/g' app/build.gradle
+        sed -i 's/compileSdkVersion 23/compileSdkVersion 22/g' app/build.gradle
+        
+        echo "=== Final build.gradle configuration ==="
+        cat app/build.gradle
+        
+    - name: Build legacy APK
+      run: |
+        ./gradlew clean --no-daemon
+        ./gradlew assembleDebug --no-daemon --stacktrace
+      
+    - name: Upload Legacy APK
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: intentfuzzer-legacy-apk
+        path: app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 30
+        
+    - name: Show APK info
+      if: success()
+      run: |
+        if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+          echo "✅ Legacy APK generated successfully!"
+          echo "📱 targetSdkVersion: 22 (compatible with older Android versions)"
+          echo "⚠️  Note: This APK may not install on newer Android versions (API 23+)"
+          ls -la app/build/outputs/apk/debug/app-debug.apk
+        fi
