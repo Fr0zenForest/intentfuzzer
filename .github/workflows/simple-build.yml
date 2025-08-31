@@ -53,6 +53,7 @@ jobs:
         # 使用SDK manager安装组件
         yes | $ANDROID_SDK_DIR/tools/bin/sdkmanager --sdk_root=$ANDROID_SDK_DIR \
           "platforms;android-22" \
+          "platforms;android-23" \
           "build-tools;25.0.0" \
           "platform-tools" || echo "SDK installation completed with warnings"
         

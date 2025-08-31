@@ -46,6 +46,7 @@ jobs:
         # 安装必要的SDK组件
         RUN yes | ${ANDROID_HOME}/tools/bin/sdkmanager --sdk_root=${ANDROID_HOME} \
             "platforms;android-22" \
+            "platforms;android-23" \
             "build-tools;25.0.0" \
             "platform-tools" || true
         
